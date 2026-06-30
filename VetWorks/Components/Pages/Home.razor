@@ -1,5 +1,7 @@
 @page "/"
 @rendermode InteractiveServer
+@implements IAsyncDisposable
+@inject IJSRuntime JS
 
 <PageTitle>PawCare Animal Clinic | Veterinary Care in San Jose del Monte</PageTitle>
 <HeadContent>
@@ -91,12 +93,16 @@
                     <div><p class="eyebrow">Veterinary services</p><h2>Practical care for healthier pets</h2></div>
                     <p>Services are recommended based on your pet's age, history, symptoms, and physical assessment.</p>
                 </div>
-                <div class="card-grid service-grid">
-                    @foreach (var service in Services)
+                <div class="card-grid service-grid" id="service-cards">
+                    @foreach (var service in GetVisibleItems(Services, servicesExpanded, servicesVisibleCount))
                     {
                         <article class="card service-card"><span class="card__icon" aria-hidden="true">@service.Icon</span><h3>@service.Title</h3><p>@service.Description</p></article>
                     }
                 </div>
+                @if (ShouldShowToggle(Services, servicesVisibleCount))
+                {
+                    <button class="button button--secondary section-toggle" type="button" aria-controls="service-cards" aria-expanded="@servicesExpanded.ToString().ToLowerInvariant()" @onclick="ToggleServices">@(servicesExpanded ? "Show Less" : "Show More")</button>
+                }
             </div>
         </section>
 
@@ -106,12 +112,16 @@
                     <div><p class="eyebrow">Why choose PawCare</p><h2>Care that makes visits easier to understand</h2></div>
                     <p>We focus on calm handling, straightforward communication, and useful support between visits.</p>
                 </div>
-                <div class="card-grid why-grid">
-                    @foreach (var reason in Reasons)
+                <div class="card-grid why-grid" id="why-cards">
+                    @foreach (var reason in GetVisibleItems(Reasons, reasonsExpanded, reasonsVisibleCount))
                     {
                         <article class="card"><span class="card__number">@reason.Number</span><h3>@reason.Title</h3><p>@reason.Description</p></article>
                     }
                 </div>
+                @if (ShouldShowToggle(Reasons, reasonsVisibleCount))
+                {
+                    <button class="button button--secondary section-toggle" type="button" aria-controls="why-cards" aria-expanded="@reasonsExpanded.ToString().ToLowerInvariant()" @onclick="ToggleReasons">@(reasonsExpanded ? "Show Less" : "Show More")</button>
+                }
             </div>
         </section>
 
@@ -121,8 +131,8 @@
                     <div><p class="eyebrow">Clinic environment</p><h2>Spaces planned around routine pet care</h2></div>
                     <p>Each area supports an organized visit while helping pets and owners feel at ease.</p>
                 </div>
-                <div class="environment-grid">
-                    @foreach (var space in ClinicSpaces)
+                <div class="environment-grid" id="clinic-cards">
+                    @foreach (var space in GetVisibleItems(ClinicSpaces, clinicExpanded, clinicVisibleCount))
                     {
                         <article class="environment-card">
                             <figure class="clinic-photo clinic-photo--space"><img src="@space.ImagePath" alt="@space.Title at PawCare Animal Clinic" /></figure>
@@ -130,6 +140,10 @@
                         </article>
                     }
                 </div>
+                @if (ShouldShowToggle(ClinicSpaces, clinicVisibleCount))
+                {
+                    <button class="button button--secondary section-toggle" type="button" aria-controls="clinic-cards" aria-expanded="@clinicExpanded.ToString().ToLowerInvariant()" @onclick="ToggleClinic">@(clinicExpanded ? "Show Less" : "Show More")</button>
+                }
             </div>
         </section>
 
@@ -150,12 +164,16 @@
         <section class="section section--teal testimonials" aria-labelledby="testimonials-title">
             <div class="container">
                 <div class="section-heading section-heading--light"><div><p class="eyebrow">Pet owner feedback</p><h2 id="testimonials-title">What clients say about their visits</h2></div></div>
-                <div class="card-grid testimonial-grid">
-                    @foreach (var testimonial in Testimonials)
+                <div class="card-grid testimonial-grid" id="testimonial-cards">
+                    @foreach (var testimonial in GetVisibleItems(Testimonials, testimonialsExpanded, testimonialsVisibleCount))
                     {
                         <blockquote><p>&ldquo;@testimonial.Quote&rdquo;</p><footer>@testimonial.Name</footer></blockquote>
                     }
                 </div>
+                @if (ShouldShowToggle(Testimonials, testimonialsVisibleCount))
+                {
+                    <button class="button button--secondary section-toggle" type="button" aria-controls="testimonial-cards" aria-expanded="@testimonialsExpanded.ToString().ToLowerInvariant()" @onclick="ToggleTestimonials">@(testimonialsExpanded ? "Show Less" : "Show More")</button>
+                }
             </div>
         </section>
 
@@ -203,8 +221,73 @@
 
 @code {
     private bool menuOpen;
+    private bool servicesExpanded;
+    private bool reasonsExpanded;
+    private bool clinicExpanded;
+    private bool testimonialsExpanded;
+    private int servicesVisibleCount = 4;
+    private int reasonsVisibleCount = 5;
+    private int clinicVisibleCount = 2;
+    private int testimonialsVisibleCount = 4;
+    private DotNetObjectReference<Home>? cardVisibilityReference;
+
     private void ToggleMenu() => menuOpen = !menuOpen;
     private void CloseMenu() => menuOpen = false;
+    private void ToggleServices() => servicesExpanded = !servicesExpanded;
+    private void ToggleReasons() => reasonsExpanded = !reasonsExpanded;
+    private void ToggleClinic() => clinicExpanded = !clinicExpanded;
+    private void ToggleTestimonials() => testimonialsExpanded = !testimonialsExpanded;
+
+    private static IEnumerable<T> GetVisibleItems<T>(IReadOnlyList<T> items, bool expanded, int visibleCount) =>
+        expanded ? items : items.Take(visibleCount);
+
+    private static bool ShouldShowToggle<T>(IReadOnlyList<T> items, int visibleCount) =>
+        items.Count > visibleCount;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        cardVisibilityReference = DotNetObjectReference.Create(this);
+        await JS.InvokeVoidAsync("pawCareCardVisibility.initialize", cardVisibilityReference);
+    }
+
+    [JSInvokable]
+    public Task UpdateVisibleCounts(int services, int reasons, int clinic, int testimonials)
+    {
+        servicesVisibleCount = Math.Max(1, services);
+        reasonsVisibleCount = Math.Max(1, reasons);
+        clinicVisibleCount = Math.Max(1, clinic);
+        testimonialsVisibleCount = Math.Max(1, testimonials);
+
+        if (!ShouldShowToggle(Services, servicesVisibleCount)) servicesExpanded = false;
+        if (!ShouldShowToggle(Reasons, reasonsVisibleCount)) reasonsExpanded = false;
+        if (!ShouldShowToggle(ClinicSpaces, clinicVisibleCount)) clinicExpanded = false;
+        if (!ShouldShowToggle(Testimonials, testimonialsVisibleCount)) testimonialsExpanded = false;
+
+        return InvokeAsync(StateHasChanged);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (cardVisibilityReference is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await JS.InvokeVoidAsync("pawCareCardVisibility.dispose");
+        }
+        catch (JSDisconnectedException)
+        {
+        }
+
+        cardVisibilityReference.Dispose();
+    }
 
     private const string SchemaJson = """
     {"@context":"https://schema.org","@type":"VeterinaryCare","name":"PawCare Animal Clinic","description":"Practical, compassionate veterinary care for dogs and cats.","telephone":"+63 917 482 7381","email":"hello@pawcareanimalclinic.com","address":{"@type":"PostalAddress","addressLocality":"San Jose del Monte","addressRegion":"Bulacan","addressCountry":"PH"},"openingHours":"Mo-Sa 09:00-18:00"}
